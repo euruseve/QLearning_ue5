@@ -47,7 +47,7 @@ void ANPCSpawnManager::Tick(float DeltaTime)
 
     if (bIsRunning)
     {
-        CheckAndRespawnNPCs();
+        //CheckAndRespawnNPCs();
     }
 }
 
@@ -59,6 +59,9 @@ void ANPCSpawnManager::StartSimulation()
         return;
     }
 
+
+
+    
     bIsRunning = true;
     UE_LOG(LogTemp, Warning, TEXT("=== SIMULATION STARTED ==="));
     UE_LOG(LogTemp, Warning, TEXT("Target NPC Count: %d"), TargetNPCCount);

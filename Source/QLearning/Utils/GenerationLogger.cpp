@@ -7,34 +7,48 @@ int32 UGenerationLogger::TotalGenerations = 0;
 float UGenerationLogger::TotalLifetime = 0.0f;
 float UGenerationLogger::BestLifetime = 0.0f;
 int32 UGenerationLogger::BestGeneration = 0;
+FString UGenerationLogger::CurrentLogFilePath = TEXT("");
 
 void UGenerationLogger::InitializeGenerationLog()
 {
-    FString FilePath = GetGenerationLogPath();
+    if (CurrentLogFilePath.IsEmpty())
+    {
+        CurrentLogFilePath = FPaths::ProjectSavedDir() + TEXT("Logs/Generations_All.csv");  // ЗМІНЕНО
+    }
     
-    FString Directory = FPaths::GetPath(FilePath);
+    FString Directory = FPaths::GetPath(CurrentLogFilePath);
     IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
     if (!PlatformFile.DirectoryExists(*Directory))
     {
         PlatformFile.CreateDirectory(*Directory);
     }
-
-    if (!FPaths::FileExists(FilePath))
+    
+    if (!FPaths::FileExists(CurrentLogFilePath))
     {
         FString Header = TEXT("Timestamp,Generation,NPCID,Lifetime,CauseOfDeath,TotalActions,AvgNeedLevel\n");
-        FFileHelper::SaveStringToFile(Header, *FilePath);
-        UE_LOG(LogTemp, Log, TEXT("Generation Log initialized at: %s"), *FilePath);
+        FFileHelper::SaveStringToFile(Header, *CurrentLogFilePath);
+        UE_LOG(LogTemp, Log, TEXT("Generation Log initialized at: %s"), *CurrentLogFilePath);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("Generation Log appending to existing file: %s"), *CurrentLogFilePath);
     }
 
+
+    /* FOR STAT RESET
     TotalGenerations = 0;
     TotalLifetime = 0.0f;
     BestLifetime = 0.0f;
     BestGeneration = 0;
+    */
 }
 
 void UGenerationLogger::LogGeneration(const FGenerationStats& Stats)
 {
-    FString FilePath = GetGenerationLogPath();
+    if (CurrentLogFilePath.IsEmpty())
+    {
+        InitializeGenerationLog();
+    }
     
     FString Line = FString::Printf(TEXT("%s,%d,%d,%.2f,%d,%d,%.2f\n"),
         *Stats.Timestamp,
@@ -46,7 +60,7 @@ void UGenerationLogger::LogGeneration(const FGenerationStats& Stats)
         Stats.AverageNeedLevel
     );
 
-    FFileHelper::SaveStringToFile(Line, *FilePath, 
+    FFileHelper::SaveStringToFile(Line, *CurrentLogFilePath,  // ЗМІНЕНО
                                   FFileHelper::EEncodingOptions::AutoDetect, 
                                   &IFileManager::Get(), 
                                   FILEWRITE_Append);

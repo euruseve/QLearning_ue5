@@ -53,4 +53,6 @@ private:
 	static float TotalLifetime;
 	static float BestLifetime;
 	static int32 BestGeneration;
+
+	static FString CurrentLogFilePath; 
 };

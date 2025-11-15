@@ -30,4 +30,6 @@ private:
 	static FString GetLogFilePath();
 	static FString GetTimestamp();
 	static FString NeedMapToString(const TMap<ENeedType, float>& Needs);
+
+	static FString CurrentLogFilePath; 
 };

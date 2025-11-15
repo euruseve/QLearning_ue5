@@ -110,30 +110,44 @@ float UQLearningComponent::CalculateReward(const FNPCState& OldState,
 {
     if (bDied)
     {
-        return -1000.0f; 
+        return -1000.0f;
     }
 
-    float Reward = AccumulatedReward;  
-    AccumulatedReward = 0.0f;  
-    
+    float Reward = 0.0f;
+
     if (NeedsComponent)
     {
         for (int32 i = 0; i < (int32)ENeedType::MAX; i++)
         {
             ENeedType NeedType = (ENeedType)i;
             
-            float OldValue = 50.0f; 
+            ENeedLevel OldLevel = OldState.NeedLevels.Contains(NeedType) ? 
+                                  OldState.NeedLevels[NeedType] : ENeedLevel::Medium;
+            float OldValue = ((int32)OldLevel + 1) * 20.0f;
+            
             float NewValue = NeedsComponent->GetNeedValue(NeedType);
             
             float Improvement = NewValue - OldValue;
-            Reward += Improvement; 
+            Reward += Improvement * 2.0f;  
             
             if (NewValue >= 100.0f && OldValue < 100.0f)
             {
-                Reward += 10.0f;
+                Reward += 20.0f;  
+            }
+            
+            if (NewValue <= 20.0f)
+            {
+                Reward -= 50.0f;
+            }
+            else if (NewValue <= 40.0f)
+            {
+                Reward -= 20.0f; 
             }
         }
     }
+    
+    Reward += AccumulatedReward * 0.05f;  
+    AccumulatedReward = 0.0f;
 
     return Reward;
 }

@@ -27,17 +27,17 @@ void ANPCCharacter::BeginPlay()
         if (AIController)
         {
             AIController->Possess(this);
-            UE_LOG(LogTemp, Warning, TEXT("NPC %d: Manually spawned AI Controller"), NPCID);
+            UE_LOG(LogTemp, Warning, TEXT("%s: Manually spawned AI Controller"), *GetName());
         }
         else
         {
-            UE_LOG(LogTemp, Error, TEXT("NPC %d: FAILED to spawn AI Controller!"), NPCID);
+            UE_LOG(LogTemp, Error, TEXT("%s: FAILED to spawn AI Controller!"), *GetName());
             return;
         }
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("NPC %d: AI Controller already exists"), NPCID);
+        UE_LOG(LogTemp, Log, TEXT("%s: AI Controller already exists"), *GetName());
     }
 
     if (NeedsComponent)
@@ -50,12 +50,7 @@ void ANPCCharacter::BeginPlay()
     GetWorld()->GetTimerManager().SetTimer(DecisionTimerHandle, this, 
         &ANPCCharacter::MakeDecision,
         DecisionInterval, true);
-
-    UE_LOG(LogTemp, Warning, TEXT("=== NPC %d DEBUG ==="), NPCID);
-    UE_LOG(LogTemp, Warning, TEXT("AIController: %s"), AIController ? TEXT("OK") : TEXT("NULL"));
-    UE_LOG(LogTemp, Warning, TEXT("Available Objects: %d"), AvailableObjects.Num());
 }
-
 
 void ANPCCharacter::Tick(float DeltaTime)
 {
@@ -133,11 +128,11 @@ void ANPCCharacter::MakeDecision()
     
     if (CurrentState == ENPCState::MovingToObject || CurrentState == ENPCState::Interacting)
     {
-        UE_LOG(LogTemp, Log, TEXT("NPC %d busy (State: %d), skipping decision"), 
-               NPCID, (int32)CurrentState);
+        UE_LOG(LogTemp, Log, TEXT("%s busy (State: %d), skipping decision"), 
+               *GetName(), (int32)CurrentState);
         return;  
     }
-
+    
     bool bAllNeedsHigh = true;
     for (int32 i = 0; i < (int32)ENeedType::MAX; i++)
     {
@@ -154,15 +149,15 @@ void ANPCCharacter::MakeDecision()
     {
         ChosenAction = EActionType::Idle;
         CurrentState = ENPCState::Idle;
-        UE_LOG(LogTemp, Log, TEXT("NPC %d: All needs high, idling"), NPCID);
+        UE_LOG(LogTemp, Log, TEXT("%s: All needs high, idling"), *GetName());
         return;
     }
     
     StateBeforeAction = QLearningComponent->CurrentState;
     
     ChosenAction = QLearningComponent->ChooseAction(AvailableActions);
-    UE_LOG(LogTemp, Log, TEXT("NPC %d chose action: %d"), NPCID, (int32)ChosenAction);
-
+    UE_LOG(LogTemp, Log, TEXT("%s chose action: %d"), *GetName(), (int32)ChosenAction);
+    
     if (ChosenAction == EActionType::Idle)
     {
         CurrentState = ENPCState::Idle;
@@ -177,8 +172,8 @@ void ANPCCharacter::MakeDecision()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("NPC %d: No object found for action %d"), 
-               NPCID, (int32)ChosenAction);
+        UE_LOG(LogTemp, Log, TEXT("%s: No object found for action %d"), 
+               *GetName(), (int32)ChosenAction);
         CurrentState = ENPCState::Idle;
     }
 }
@@ -192,7 +187,7 @@ void ANPCCharacter::MoveToObject(AInteractableObject* Object)
     }
 
     float Distance = FVector::Dist(GetActorLocation(), Object->GetActorLocation());
-    UE_LOG(LogTemp, Warning, TEXT("NPC %d: Distance to target: %.2f"), NPCID, Distance);
+    UE_LOG(LogTemp, Warning, TEXT("%s: Distance to target: %.2f"), *GetName(), Distance);
 
     CurrentState = ENPCState::MovingToObject;
 
@@ -205,7 +200,7 @@ void ANPCCharacter::MoveToObject(AInteractableObject* Object)
 
     if (RequestResult.Code != EPathFollowingRequestResult::RequestSuccessful)
     {
-        UE_LOG(LogTemp, Error, TEXT("NPC %d: MoveTo request FAILED!"), NPCID);
+        UE_LOG(LogTemp, Error, TEXT("%s: MoveTo request FAILED!"), *GetName());
         CurrentState = ENPCState::Idle;
         return;
     }
@@ -222,12 +217,13 @@ void ANPCCharacter::MoveToObject(AInteractableObject* Object)
         );
     }
 
-    UE_LOG(LogTemp, Log, TEXT("NPC %d moving to %s"), NPCID, *Object->GetName());
+    UE_LOG(LogTemp, Log, TEXT("%s moving to %s"), *GetName(), *Object->GetName());
 }
 
 void ANPCCharacter::OnMoveCompleted(FAIRequestID RequestID, EPathFollowingResult::Type Result)
 {
-    UE_LOG(LogTemp, Warning, TEXT("NPC %d move completed with result: %d"), NPCID, (int32)Result);
+    UE_LOG(LogTemp, Warning, TEXT("%s move completed with result: %d"), 
+           *GetName(), (int32)Result);
     
     if (AIController && AIController->GetPathFollowingComponent())
     {
@@ -237,16 +233,17 @@ void ANPCCharacter::OnMoveCompleted(FAIRequestID RequestID, EPathFollowingResult
     if (CurrentTarget)
     {
         float Distance = FVector::Dist(GetActorLocation(), CurrentTarget->GetActorLocation());
-        UE_LOG(LogTemp, Warning, TEXT("NPC %d distance to target: %.2f"), NPCID, Distance);
+        UE_LOG(LogTemp, Warning, TEXT("%s distance to target: %.2f"), 
+               *GetName(), Distance);
         
         if (Distance < 300.0f)
         {
-            UE_LOG(LogTemp, Log, TEXT("NPC %d reached target!"), NPCID);
+            UE_LOG(LogTemp, Log, TEXT("%s reached target!"), *GetName());
             StartInteractionWithObject();
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("NPC %d too far from target"), NPCID);
+            UE_LOG(LogTemp, Warning, TEXT("%s too far from target"), *GetName());
             CurrentState = ENPCState::Idle;
             CurrentTarget = nullptr;
         }
@@ -267,7 +264,7 @@ void ANPCCharacter::StartInteractionWithObject()
     
     if (!CurrentTarget->CanInteract())
     {
-        UE_LOG(LogTemp, Warning, TEXT("NPC %d: Object became occupied"), NPCID);
+        UE_LOG(LogTemp, Warning, TEXT("%s: Object became occupied"), *GetName());
         CurrentState = ENPCState::Idle;
         CurrentTarget = nullptr;
         return;
@@ -279,7 +276,8 @@ void ANPCCharacter::StartInteractionWithObject()
     
     CurrentTarget->StartInteraction(this);
 
-    UE_LOG(LogTemp, Log, TEXT("NPC %d started interaction with %s"), NPCID, *CurrentTarget->GetName());
+    UE_LOG(LogTemp, Log, TEXT("%s started interaction with %s"), 
+           *GetName(), *CurrentTarget->GetName());
 }
 
 void ANPCCharacter::OnInteractionComplete(AActor* User)
@@ -289,7 +287,7 @@ void ANPCCharacter::OnInteractionComplete(AActor* User)
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("NPC %d completed interaction"), NPCID);
+    UE_LOG(LogTemp, Log, TEXT("%s completed interaction"), *GetName());
 
     TotalActionsPerformed++;
     
@@ -328,8 +326,8 @@ void ANPCCharacter::OnNPCDied()
         }
     }
 
-    UE_LOG(LogTemp, Error, TEXT("NPC %d DIED after %.2f seconds (Generation %d)"), 
-           NPCID, Lifetime, Generation);
+    UE_LOG(LogTemp, Error, TEXT("%s DIED after %.2f seconds (Generation %d)"), 
+           *GetName(), Lifetime, Generation);
     
     float DeathPenalty = -1000.0f;
     QLearningComponent->UpdateCurrentState();
