@@ -47,6 +47,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Stats")
 	static void LogSummary();
 
+	UFUNCTION(BlueprintCallable, Category = "Stats")
+	static int32 GetLastGeneration();
 private:
 	static FString GetGenerationLogPath();
 	static int32 TotalGenerations;

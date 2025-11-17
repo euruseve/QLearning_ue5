@@ -39,6 +39,14 @@ void ANPCSpawnManager::BeginPlay()
     {
         StartSimulation();
     }
+
+    /* IDK if I gonna use it or not
+    if (GetWorld() && GetWorld()->GetWorldSettings())
+    {
+        GetWorld()->GetWorldSettings()->SetTimeDilation(2.0f);
+        UE_LOG(LogTemp, Warning, TEXT("=== TIME DILATION SET TO 2.0x ==="));
+    }
+     */
 }
 
 void ANPCSpawnManager::Tick(float DeltaTime)
@@ -58,8 +66,6 @@ void ANPCSpawnManager::StartSimulation()
         UE_LOG(LogTemp, Warning, TEXT("Simulation already running!"));
         return;
     }
-
-
 
     
     bIsRunning = true;
@@ -132,7 +138,8 @@ void ANPCSpawnManager::SpawnNPC(int32 NPCID)
         
         if (!NPCGenerations.Contains(NPCID))
         {
-            NPCGenerations.Add(NPCID, 0);
+            int32 LastGeneration = UGenerationLogger::GetLastGeneration();
+            NPCGenerations.Add(NPCID, LastGeneration + 1); 
         }
         else
         {
@@ -148,19 +155,15 @@ void ANPCSpawnManager::SpawnNPC(int32 NPCID)
             NewNPC->NeedsComponent->OnNPCDied.AddDynamic(this, &ANPCSpawnManager::HandleNPCDeath);
         }
 
-        if (bShareQTable && NewNPC->Generation > 0 && NewNPC->QLearningComponent)
+        if (bShareQTable && NewNPC->QLearningComponent)
         {
-            NewNPC->QLearningComponent->LoadQTable("QTable.json");
+            NewNPC->QLearningComponent->LoadQTable("QTable.json"); 
         }
 
         ActiveNPCs.Add(NewNPC);
 
         UE_LOG(LogTemp, Warning, TEXT("Spawned NPC %d (Generation %d) at %s"), 
                NPCID, NewNPC->Generation, *SpawnLocation.ToString());
-    }
-    else
-    {
-        UE_LOG(LogTemp, Error, TEXT("Failed to spawn NPC %d!"), NPCID);
     }
 }
 

@@ -2,6 +2,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformFileManager.h"
+#include "Internationalization/Culture.h"
 
 FString UCSVLogger::CurrentLogFilePath = TEXT("");
 
@@ -9,7 +10,7 @@ void UCSVLogger::InitializeLog()
 {
     if (CurrentLogFilePath.IsEmpty())
     {
-        CurrentLogFilePath = FPaths::ProjectSavedDir() + TEXT("Logs/QLearning_All.csv");  // ЗМІНЕНО
+        CurrentLogFilePath = FPaths::ProjectSavedDir() + TEXT("Logs/QLearning_All.csv");
     }
 
     FString Directory = FPaths::GetPath(CurrentLogFilePath);
@@ -18,11 +19,10 @@ void UCSVLogger::InitializeLog()
     {
         PlatformFile.CreateDirectory(*Directory);
     }
-
-    // Додаємо заголовок ТІЛЬКИ якщо файл новий
+    
     if (!FPaths::FileExists(CurrentLogFilePath))
     {
-        FString Header = TEXT("Timestamp,NPCID,Generation,Action,StateKey,Reward,Lifetime,Event,Hunger,Bladder,Energy,Social,Hygiene,Fun\n");
+        FString Header = TEXT("Timestamp;NPCID;Generation;Action;StateKey;Reward;Lifetime;Event;Hunger;Bladder;Energy;Social;Hygiene;Fun\n");
         FFileHelper::SaveStringToFile(Header, *CurrentLogFilePath);
         UE_LOG(LogTemp, Log, TEXT("CSV Log initialized at: %s"), *CurrentLogFilePath);
     }
@@ -38,17 +38,21 @@ void UCSVLogger::LogAction(int32 NPCID, int32 Generation, EActionType Action,
 {
     if (CurrentLogFilePath.IsEmpty())
     {
-        InitializeLog();  // Якщо не ініціалізовано - ініціалізуємо
+        InitializeLog();  
     }
     
-    FString Line = FString::Printf(TEXT("%s,%d,%d,%d,%s,%.2f,%.2f,Action,%s\n"),
+    // ВИПРАВЛЕНО: Форматуємо числа з крапкою
+    FString RewardStr = FString::SanitizeFloat(Reward).Replace(TEXT(","), TEXT("."));
+    FString LifetimeStr = FString::SanitizeFloat(Lifetime).Replace(TEXT(","), TEXT("."));
+    
+    FString Line = FString::Printf(TEXT("%s;%d;%d;%d;%s;%s;%s;Action;%s\n"),
         *GetTimestamp(),
         NPCID,
         Generation,
         (int32)Action,
         *StateKey,
-        Reward,
-        Lifetime,
+        *RewardStr,
+        *LifetimeStr,
         *NeedMapToString(Needs)
     );
 
@@ -66,14 +70,16 @@ void UCSVLogger::LogDeath(int32 NPCID, int32 Generation, float Lifetime,
         InitializeLog();
     }
     
-    FString Line = FString::Printf(TEXT("%s,%d,%d,%d,%s,%.2f,%.2f,Death,%s\n"),
+    // ВИПРАВЛЕНО: Форматуємо числа з крапкою
+    FString LifetimeStr = FString::SanitizeFloat(Lifetime).Replace(TEXT(","), TEXT("."));
+    
+    FString Line = FString::Printf(TEXT("%s;%d;%d;%d;%s;-1000.00;%s;Death;%s\n"),
         *GetTimestamp(),
         NPCID,
         Generation,
         -1,
         TEXT("N/A"),
-        -1000.0f,
-        Lifetime,
+        *LifetimeStr,
         *NeedMapToString(Needs)
     );
 
@@ -90,13 +96,12 @@ void UCSVLogger::SaveLog()
 
 FString UCSVLogger::GetLogFilePath()
 {
-    return FPaths::ProjectSavedDir() + TEXT("Logs/QLearning_") + 
-           FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")) + TEXT(".csv");
+    return CurrentLogFilePath;
 }
 
 FString UCSVLogger::GetTimestamp()
 {
-    return FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+    return FDateTime::Now().ToString(TEXT("%Y-%m-%d_%H:%M:%S"));
 }
 
 FString UCSVLogger::NeedMapToString(const TMap<ENeedType, float>& Needs)
@@ -113,6 +118,14 @@ FString UCSVLogger::NeedMapToString(const TMap<ENeedType, float>& Needs)
         }
     }
 
-    return FString::Printf(TEXT("%.2f,%.2f,%.2f,%.2f,%.2f,%.2f"),
-        Values[0], Values[1], Values[2], Values[3], Values[4], Values[5]);
+    // ВИПРАВЛЕНО: Кожне число окремо з заміною коми на крапку
+    FString V0 = FString::SanitizeFloat(Values[0]).Replace(TEXT(","), TEXT("."));
+    FString V1 = FString::SanitizeFloat(Values[1]).Replace(TEXT(","), TEXT("."));
+    FString V2 = FString::SanitizeFloat(Values[2]).Replace(TEXT(","), TEXT("."));
+    FString V3 = FString::SanitizeFloat(Values[3]).Replace(TEXT(","), TEXT("."));
+    FString V4 = FString::SanitizeFloat(Values[4]).Replace(TEXT(","), TEXT("."));
+    FString V5 = FString::SanitizeFloat(Values[5]).Replace(TEXT(","), TEXT("."));
+
+    return FString::Printf(TEXT("%s;%s;%s;%s;%s;%s"),
+        *V0, *V1, *V2, *V3, *V4, *V5);
 }

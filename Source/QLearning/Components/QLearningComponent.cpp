@@ -128,25 +128,25 @@ float UQLearningComponent::CalculateReward(const FNPCState& OldState,
             float NewValue = NeedsComponent->GetNeedValue(NeedType);
             
             float Improvement = NewValue - OldValue;
-            Reward += Improvement * 2.0f;  
+            Reward += Improvement * 3.0f;  
             
             if (NewValue >= 100.0f && OldValue < 100.0f)
             {
-                Reward += 20.0f;  
+                Reward += 30.0f; 
             }
             
             if (NewValue <= 20.0f)
             {
-                Reward -= 50.0f;
+                Reward -= 100.0f; 
             }
             else if (NewValue <= 40.0f)
             {
-                Reward -= 20.0f; 
+                Reward -= 30.0f;  
             }
         }
     }
     
-    Reward += AccumulatedReward * 0.05f;  
+    Reward += AccumulatedReward * 0.005f;  
     AccumulatedReward = 0.0f;
 
     return Reward;

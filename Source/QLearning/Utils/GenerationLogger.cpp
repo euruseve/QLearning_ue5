@@ -13,7 +13,7 @@ void UGenerationLogger::InitializeGenerationLog()
 {
     if (CurrentLogFilePath.IsEmpty())
     {
-        CurrentLogFilePath = FPaths::ProjectSavedDir() + TEXT("Logs/Generations_All.csv");  // ЗМІНЕНО
+        CurrentLogFilePath = FPaths::ProjectSavedDir() + TEXT("Logs/Generations_All.csv");
     }
     
     FString Directory = FPaths::GetPath(CurrentLogFilePath);
@@ -25,7 +25,7 @@ void UGenerationLogger::InitializeGenerationLog()
     
     if (!FPaths::FileExists(CurrentLogFilePath))
     {
-        FString Header = TEXT("Timestamp,Generation,NPCID,Lifetime,CauseOfDeath,TotalActions,AvgNeedLevel\n");
+        FString Header = TEXT("Timestamp;Generation;NPCID;Lifetime;CauseOfDeath;TotalActions;AvgNeedLevel\n");
         FFileHelper::SaveStringToFile(Header, *CurrentLogFilePath);
         UE_LOG(LogTemp, Log, TEXT("Generation Log initialized at: %s"), *CurrentLogFilePath);
     }
@@ -33,7 +33,6 @@ void UGenerationLogger::InitializeGenerationLog()
     {
         UE_LOG(LogTemp, Log, TEXT("Generation Log appending to existing file: %s"), *CurrentLogFilePath);
     }
-
 
     /* FOR STAT RESET
     TotalGenerations = 0;
@@ -50,20 +49,24 @@ void UGenerationLogger::LogGeneration(const FGenerationStats& Stats)
         InitializeGenerationLog();
     }
     
-    FString Line = FString::Printf(TEXT("%s,%d,%d,%.2f,%d,%d,%.2f\n"),
+    // ВИПРАВЛЕНО: Форматуємо числа з крапкою
+    FString LifetimeStr = FString::SanitizeFloat(Stats.Lifetime).Replace(TEXT(","), TEXT("."));
+    FString AvgNeedStr = FString::SanitizeFloat(Stats.AverageNeedLevel).Replace(TEXT(","), TEXT("."));
+    
+    FString Line = FString::Printf(TEXT("%s;%d;%d;%s;%d;%d;%s\n"),
         *Stats.Timestamp,
         Stats.GenerationNumber,
         Stats.NPCID,
-        Stats.Lifetime,
+        *LifetimeStr,
         (int32)Stats.CauseOfDeath,
         Stats.TotalActions,
-        Stats.AverageNeedLevel
+        *AvgNeedStr
     );
 
-    FFileHelper::SaveStringToFile(Line, *CurrentLogFilePath,  // ЗМІНЕНО
-                                  FFileHelper::EEncodingOptions::AutoDetect, 
-                                  &IFileManager::Get(), 
-                                  FILEWRITE_Append);
+    FFileHelper::SaveStringToFile(Line, *CurrentLogFilePath, 
+                                 FFileHelper::EEncodingOptions::AutoDetect, 
+                                 &IFileManager::Get(), 
+                                 FILEWRITE_Append);
     
     TotalGenerations++;
     TotalLifetime += Stats.Lifetime;
@@ -93,6 +96,43 @@ void UGenerationLogger::LogSummary()
 
 FString UGenerationLogger::GetGenerationLogPath()
 {
-    return FPaths::ProjectSavedDir() + TEXT("Logs/Generations_") + 
-           FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")) + TEXT(".csv");
+    return CurrentLogFilePath;
+}
+
+int32 UGenerationLogger::GetLastGeneration()
+{
+    FString FilePath = FPaths::ProjectSavedDir() + TEXT("Logs/Generations_All.csv");
+    
+    if (!FPaths::FileExists(FilePath))
+    {
+        return 0;  
+    }
+    
+    FString FileContent;
+    if (!FFileHelper::LoadFileToString(FileContent, *FilePath))
+    {
+        return 0;
+    }
+    
+    TArray<FString> Lines;
+    FileContent.ParseIntoArrayLines(Lines);
+
+    if (Lines.Num() <= 1) 
+    {
+        return 0;
+    }
+    
+    FString LastLine = Lines.Last();
+    
+    TArray<FString> Columns;
+    LastLine.ParseIntoArray(Columns, TEXT(";"));
+
+    if (Columns.Num() >= 2) 
+    {
+        int32 LastGen = FCString::Atoi(*Columns[1]);
+        UE_LOG(LogTemp, Warning, TEXT("Found last generation: %d"), LastGen);
+        return LastGen;
+    }
+
+    return 0;
 }

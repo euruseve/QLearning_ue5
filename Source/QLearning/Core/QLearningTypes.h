@@ -145,19 +145,19 @@ struct FQLearningParams
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float LearningRate = 0.1f;
+    float LearningRate = 0.05f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float DiscountFactor = 0.9f;
+    float DiscountFactor = 0.95f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float ExplorationRate = 0.3f;
+    float ExplorationRate = 0.6f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
     float ExplorationDecay = 0.995f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float MinExplorationRate = 0.05f;
+    float MinExplorationRate = 0.1f;
 };
 
 USTRUCT(BlueprintType)

@@ -350,7 +350,7 @@ void ANPCCharacter::OnNPCDied()
         TotalNeeds += Need.Value;
     }
     Stats.AverageNeedLevel = TotalNeeds / (int32)ENeedType::MAX;
-    Stats.Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+    Stats.Timestamp = FDateTime::Now().ToString(TEXT("%Y-%m-%d_%H:%M:%S"));
 
     UGenerationLogger::LogGeneration(Stats);
     
