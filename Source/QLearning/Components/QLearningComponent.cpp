@@ -37,6 +37,13 @@ void UQLearningComponent::UpdateCurrentState()
 {
     if (NeedsComponent)
     {
+        PreviousNeedValues.Empty();
+        for (int32 i = 0; i < (int32)ENeedType::MAX; i++)
+        {
+            ENeedType NeedType = (ENeedType)i;
+            PreviousNeedValues.Add(NeedType, NeedsComponent->GetNeedValue(NeedType));
+        }
+        
         PreviousState = CurrentState;
         CurrentState = NeedsComponent->GetCurrentState();
     }
@@ -88,9 +95,15 @@ EActionType UQLearningComponent::GetBestAction(const FNPCState& State,
 
 void UQLearningComponent::UpdateQValue(float Reward)
 {
-    if (!NeedsComponent) return;
+    if (!NeedsComponent)
+    {
+        UE_LOG(LogTemp, Error, TEXT("UpdateQValue: No NeedsComponent!"));
+        return;
+    }
 
-    // Q(s,a) = Q(s,a) + α * [R + γ * max(Q(s',a')) - Q(s,a)]
+    UE_LOG(LogTemp, Error, TEXT("UpdateQValue CALLED: Reward=%.2f, QTable.Num()=%d"), 
+           Reward, QTable.Num());
+    
     
     float CurrentQ = GetQValue(PreviousState, PreviousAction);
     float MaxNextQ = GetMaxQValue(CurrentState, GetAllActions());
@@ -100,8 +113,14 @@ void UQLearningComponent::UpdateQValue(float Reward)
     
     SetQValue(PreviousState, PreviousAction, NewQ);
 
-    UE_LOG(LogTemp, Log, TEXT("Q-Update: State=%s, Action=%d, Reward=%.2f, OldQ=%.2f, NewQ=%.2f"),
-           *PreviousState.GetStateKey(), (int32)PreviousAction, Reward, CurrentQ, NewQ);
+    if (Params.ExplorationRate > Params.MinExplorationRate)
+    {
+        Params.ExplorationRate *= Params.ExplorationDecay;
+        Params.ExplorationRate = FMath::Max(Params.ExplorationRate, Params.MinExplorationRate);
+    }
+
+    UE_LOG(LogTemp, Error, TEXT(" Q-Update: State=%s, Action=%d, Reward=%.2f, OldQ=%.2f, NewQ=%.2f, TableSize=%d, Exploration=%.3f"),
+           *PreviousState.GetStateKey(), (int32)PreviousAction, Reward, CurrentQ, NewQ, QTable.Num(), Params.ExplorationRate);
 }
 
 float UQLearningComponent::CalculateReward(const FNPCState& OldState, 
@@ -110,10 +129,12 @@ float UQLearningComponent::CalculateReward(const FNPCState& OldState,
 {
     if (bDied)
     {
-        return -1000.0f;
+        return -500.0f;  
     }
 
     float Reward = 0.0f;
+    int32 CriticalNeedsCount = 0;
+    int32 ImprovedNeedsCount = 0;
 
     if (NeedsComponent)
     {
@@ -121,32 +142,52 @@ float UQLearningComponent::CalculateReward(const FNPCState& OldState,
         {
             ENeedType NeedType = (ENeedType)i;
             
-            ENeedLevel OldLevel = OldState.NeedLevels.Contains(NeedType) ? 
-                                  OldState.NeedLevels[NeedType] : ENeedLevel::Medium;
-            float OldValue = ((int32)OldLevel + 1) * 20.0f;
+            float OldValue = 50.0f; 
+            if (PreviousNeedValues.Contains(NeedType))
+            {
+                OldValue = PreviousNeedValues[NeedType];
+            }
+            else
+            {
+                ENeedLevel OldLevel = OldState.NeedLevels.Contains(NeedType) ? 
+                                      OldState.NeedLevels[NeedType] : ENeedLevel::Medium;
+                OldValue = ((int32)OldLevel * 20.0f) + 10.0f;  
+            }
             
             float NewValue = NeedsComponent->GetNeedValue(NeedType);
             
             float Improvement = NewValue - OldValue;
-            Reward += Improvement * 3.0f;  
-            
-            if (NewValue >= 100.0f && OldValue < 100.0f)
+            if (Improvement > 0)
             {
-                Reward += 30.0f; 
+                Reward += Improvement * 0.8f; 
+                ImprovedNeedsCount++;
+            }
+            
+            if (NewValue >= 90.0f && OldValue < 90.0f)
+            {
+                Reward += 25.0f;  
             }
             
             if (NewValue <= 20.0f)
             {
-                Reward -= 100.0f; 
-            }
-            else if (NewValue <= 40.0f)
-            {
-                Reward -= 30.0f;  
+                CriticalNeedsCount++;
             }
         }
     }
     
-    Reward += AccumulatedReward * 0.005f;  
+    if (CriticalNeedsCount > 0)
+    {
+        Reward -= (15.0f * CriticalNeedsCount); 
+    }
+    
+    if (ImprovedNeedsCount >= 3)
+    {
+        Reward += 10.0f;
+    }
+    
+    Reward += 2.0f;
+    
+    Reward += AccumulatedReward * 0.01f;  
     AccumulatedReward = 0.0f;
 
     return Reward;
@@ -228,6 +269,13 @@ void UQLearningComponent::SaveQTable(const FString& Filename)
     FString SaveDirectory = FPaths::ProjectSavedDir() + TEXT("QLearning/");
     FString FullPath = SaveDirectory + Filename;
 
+    UE_LOG(LogTemp, Error, TEXT("SAVING Q-Table: QTable.Num() = %d"), QTable.Num());
+    
+    if (QTable.Num() == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Q-TABLE IS EMPTY! Nothing to save!"));
+    }
+
     IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
     if (!PlatformFile.DirectoryExists(*SaveDirectory))
     {
@@ -258,7 +306,8 @@ void UQLearningComponent::SaveQTable(const FString& Filename)
 
     FFileHelper::SaveStringToFile(OutputString, *FullPath);
     
-    UE_LOG(LogTemp, Log, TEXT("Q-Table saved to: %s"), *FullPath);
+    UE_LOG(LogTemp, Warning, TEXT("Q-Table saved: %d states, File size: %d bytes, Path: %s"), 
+           QTable.Num(), OutputString.Len(), *FullPath);
 }
 
 void UQLearningComponent::LoadQTable(const FString& Filename)
@@ -273,6 +322,8 @@ void UQLearningComponent::LoadQTable(const FString& Filename)
         return;
     }
 
+    UE_LOG(LogTemp, Warning, TEXT("Loading Q-Table: File size: %d bytes"), JsonString.Len());
+
     TSharedPtr<FJsonObject> RootObject;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
 
@@ -281,6 +332,8 @@ void UQLearningComponent::LoadQTable(const FString& Filename)
         UE_LOG(LogTemp, Error, TEXT("Failed to parse Q-Table JSON"));
         return;
     }
+    
+    UE_LOG(LogTemp, Warning, TEXT("JSON contains %d root keys"), RootObject->Values.Num());
 
     QTable.Empty();
 
@@ -311,7 +364,8 @@ void UQLearningComponent::LoadQTable(const FString& Filename)
         QTable.Add(StateKey, ActionQValues);  
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Q-Table loaded from: %s (States: %d)"), *FullPath, QTable.Num());
+    // ✅ ЗМІНЕНО на Warning щоб було видно
+    UE_LOG(LogTemp, Warning, TEXT("Q-Table loaded from: %s (States: %d)"), *FullPath, QTable.Num());
 }
 
 TArray<EActionType> UQLearningComponent::GetAllActions() const

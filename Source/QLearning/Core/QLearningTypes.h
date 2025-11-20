@@ -54,14 +54,16 @@ struct FNPCState
     FString GetStateKey() const
     {
         FString Key = "";
+        
+        // Явно ітеруємо в порядку enum
         for (int32 i = 0; i < (int32)ENeedType::MAX; i++)
         {
             ENeedType NeedType = (ENeedType)i;
-            if (NeedLevels.Contains(NeedType))
-            {
-                Key += FString::FromInt((int32)NeedLevels[NeedType]);
-            }
+            ENeedLevel Level = NeedLevels.Contains(NeedType) ? 
+                               NeedLevels[NeedType] : ENeedLevel::Medium;
+            Key += FString::FromInt((int32)Level);
         }
+        
         return Key;
     }
 
@@ -145,19 +147,19 @@ struct FQLearningParams
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float LearningRate = 0.05f;
+    float LearningRate = 0.1f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float DiscountFactor = 0.95f;
+    float DiscountFactor = 0.9f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float ExplorationRate = 0.6f;
+    float ExplorationRate = 0.8f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float ExplorationDecay = 0.995f;
+    float ExplorationDecay = 0.998f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
-    float MinExplorationRate = 0.1f;
+    float MinExplorationRate = 0.05f;
 };
 
 USTRUCT(BlueprintType)

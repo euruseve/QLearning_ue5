@@ -24,6 +24,9 @@ public:
     // Map<StateKey, Map<Action, QValue>>
     UPROPERTY(BlueprintReadOnly, Category = "Q-Learning")
     TMap<FString, FActionQValues> QTable;
+
+    UPROPERTY()
+    TMap<ENeedType, float> PreviousNeedValues;
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Q-Learning")
     FQLearningParams Params;

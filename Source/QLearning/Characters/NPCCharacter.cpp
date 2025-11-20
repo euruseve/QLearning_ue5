@@ -282,6 +282,11 @@ void ANPCCharacter::StartInteractionWithObject()
 
 void ANPCCharacter::OnInteractionComplete(AActor* User)
 {
+    UE_LOG(LogTemp, Error, TEXT("OnInteractionComplete: User=%s, This=%s, Match=%d"),
+           User ? *User->GetName() : TEXT("NULL"), 
+           *GetName(), 
+           (User == this));
+    
     if (User != this)
     {
         return;
@@ -291,6 +296,7 @@ void ANPCCharacter::OnInteractionComplete(AActor* User)
 
     TotalActionsPerformed++;
     
+    UE_LOG(LogTemp, Error, TEXT("About to update state and calculate reward..."));
     QLearningComponent->UpdateCurrentState();
     
     float Reward = QLearningComponent->CalculateReward(
@@ -301,6 +307,8 @@ void ANPCCharacter::OnInteractionComplete(AActor* User)
     
     QLearningComponent->PreviousState = StateBeforeAction;
     QLearningComponent->PreviousAction = ChosenAction;
+
+    UE_LOG(LogTemp, Error, TEXT("CALLING UpdateQValue with Reward=%.2f"), Reward);
     QLearningComponent->UpdateQValue(Reward);
     
     UCSVLogger::LogAction(NPCID, Generation, ChosenAction, StateBeforeAction.GetStateKey(),

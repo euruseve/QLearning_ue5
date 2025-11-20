@@ -28,7 +28,7 @@ public:
     TMap<ENeedType, float> Needs;
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Needs")
-    float DegradationRate = 1.0f;
+    float DegradationRate = .5f;
     
     UPROPERTY(BlueprintAssignable, Category = "Needs")
     FOnNeedChanged OnNeedChanged;
