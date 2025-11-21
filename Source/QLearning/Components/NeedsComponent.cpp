@@ -13,7 +13,21 @@ UNeedsComponent::UNeedsComponent()
 void UNeedsComponent::BeginPlay()
 {
     Super::BeginPlay();
-    InitializeNeeds();
+    
+    float StartValue = CalculateStartValue(CurrentGeneration);
+    
+    Needs.Empty();
+    for (int32 i = 0; i < (int32)ENeedType::MAX; i++)
+    {
+        ENeedType NeedType = (ENeedType)i;
+        Needs.Add(NeedType, StartValue);
+    }
+    
+    bIsAlive = true;
+    
+    float Difficulty = CalculateDifficultyMultiplier(CurrentGeneration);
+    UE_LOG(LogTemp, Warning, TEXT("🎓 Gen %d: Difficulty=%.2fx, StartValue=%.1f"),
+           CurrentGeneration, Difficulty, StartValue);
 }
 
 void UNeedsComponent::TickComponent(float DeltaTime, ELevelTick TickType, 
@@ -39,9 +53,12 @@ void UNeedsComponent::InitializeNeeds(float MinValue, float MaxValue)
 
 void UNeedsComponent::DegradeNeeds(float DeltaTime)
 {
+    float DifficultyMultiplier = CalculateDifficultyMultiplier(CurrentGeneration);
+    
     for (auto& NeedPair : Needs)
     {
-        float NewValue = FMath::Max(0.0f, NeedPair.Value - (DegradationRate * DeltaTime));
+        float DecayAmount = BaseDegradationRate * DeltaTime * DifficultyMultiplier;
+        float NewValue = FMath::Max(0.0f, NeedPair.Value - DecayAmount);
         
         if (NewValue != NeedPair.Value)
         {
@@ -119,4 +136,63 @@ ENeedType UNeedsComponent::GetMostCriticalNeed() const
     }
     
     return MostCritical;
+}
+
+float UNeedsComponent::CalculateDifficultyMultiplier(int32 Generation) const
+{
+    if (Generation <= 20)
+    {
+        return 0.25f;
+    }
+    else if (Generation <= 50)
+    {
+        float Progress = (Generation - 20) / 30.0f;
+        return FMath::Lerp(0.25f, 0.4f, Progress);
+    }
+    else if (Generation <= 100)
+    {
+        float Progress = (Generation - 50) / 50.0f;
+        return FMath::Lerp(0.4f, 0.6f, Progress);
+    }
+    else if (Generation <= 200)
+    {
+        float Progress = (Generation - 100) / 100.0f;
+        return FMath::Lerp(0.6f, 0.8f, Progress);
+    }
+    else if (Generation <= 350)
+    {
+        float Progress = (Generation - 200) / 150.0f;
+        return FMath::Lerp(0.8f, 1.0f, Progress);
+    }
+    else
+    {
+        return 1.0f;
+    }
+}
+
+float UNeedsComponent::CalculateStartValue(int32 Generation) const
+{
+    if (Generation <= 20)
+    {
+        return 80.0f;
+    }
+    else if (Generation <= 50)
+    {
+        float Progress = (Generation - 20) / 30.0f;
+        return FMath::Lerp(80.0f, 70.0f, Progress);
+    }
+    else if (Generation <= 100)
+    {
+        float Progress = (Generation - 50) / 50.0f;
+        return FMath::Lerp(70.0f, 60.0f, Progress);
+    }
+    else if (Generation <= 200)
+    {
+        float Progress = (Generation - 100) / 100.0f;
+        return FMath::Lerp(60.0f, 50.0f, Progress);
+    }
+    else
+    {
+        return 50.0f;
+    }
 }

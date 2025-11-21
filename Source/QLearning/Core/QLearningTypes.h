@@ -7,11 +7,9 @@
 UENUM(BlueprintType)
 enum class ENeedLevel : uint8
 {
-    Critical    UMETA(DisplayName = "Critical (0-20%)"),
-    Low         UMETA(DisplayName = "Low (20-40%)"),
-    Medium      UMETA(DisplayName = "Medium (40-60%)"),
-    Good        UMETA(DisplayName = "Good (60-80%)"),
-    Excellent   UMETA(DisplayName = "Excellent (80-100%)"),
+    Critical    UMETA(DisplayName = "Critical (0-40%)"),    // 0
+    Medium      UMETA(DisplayName = "Medium (40-70%)"),     // 1
+    High        UMETA(DisplayName = "High (70-100%)"),      // 2
     
     MAX         UMETA(Hidden)
 };
@@ -69,11 +67,9 @@ struct FNPCState
 
     static ENeedLevel ValueToLevel(float Value)
     {
-        if (Value <= 20.0f) return ENeedLevel::Critical;
-        if (Value <= 40.0f) return ENeedLevel::Low;
-        if (Value <= 60.0f) return ENeedLevel::Medium;
-        if (Value <= 80.0f) return ENeedLevel::Good;
-        return ENeedLevel::Excellent;
+        if (Value <= 40.0f) return ENeedLevel::Critical;
+        if (Value <= 70.0f) return ENeedLevel::Medium;
+        return ENeedLevel::High;
     }
 
     bool operator==(const FNPCState& Other) const

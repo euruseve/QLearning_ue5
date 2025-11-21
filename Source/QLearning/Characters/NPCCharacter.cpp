@@ -1,4 +1,4 @@
-#include "NPCCharacter.h"
+#include "Characters/NPCCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "../Utils/CSVLogger.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -9,7 +9,6 @@ ANPCCharacter::ANPCCharacter()
     PrimaryActorTick.bCanEverTick = true;
     
     NeedsComponent = CreateDefaultSubobject<UNeedsComponent>(TEXT("NeedsComponent"));
-    QLearningComponent = CreateDefaultSubobject<UQLearningComponent>(TEXT("QLearningComponent"));
     
     GetCharacterMovement()->MaxWalkSpeed = 600.0f;
 }
@@ -18,6 +17,10 @@ void ANPCCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
+    // Створюємо High-Level Q-Learning
+    HighLevelQL = NewObject<UHighLevelQLearning>(this, UHighLevelQLearning::StaticClass());
+    HighLevelQL->RegisterComponent();
+    
     AIController = Cast<AAIController>(GetController());
     if (!AIController)
     {
@@ -46,6 +49,8 @@ void ANPCCharacter::BeginPlay()
     }
 
     FindAvailableObjects();
+    
+    bExecutingMacroAction = false;
 
     GetWorld()->GetTimerManager().SetTimer(DecisionTimerHandle, this, 
         &ANPCCharacter::MakeDecision,
@@ -81,143 +86,141 @@ void ANPCCharacter::FindAvailableObjects()
     UE_LOG(LogTemp, Log, TEXT("Found %d interactable objects"), AvailableObjects.Num());
 }
 
-TArray<EActionType> ANPCCharacter::GetAvailableActions()
+TArray<AActor*> ANPCCharacter::GetInteractableObjectsForAction(EActionType Action)
 {
-    TArray<EActionType> Actions;
+    TArray<AActor*> Result;
     
-    Actions.Add(EActionType::Idle);
-
-    for (AInteractableObject* Object : AvailableObjects)
-    {
-        if (Object && Object->CanInteract())
-        {
-            Actions.AddUnique(Object->ActionType);
-        }
-    }
-
-    return Actions;
-}
-
-AInteractableObject* ANPCCharacter::FindObjectForAction(EActionType Action)
-{
-    AInteractableObject* ClosestObject = nullptr;
-    float ClosestDistance = MAX_FLT;
-
     for (AInteractableObject* Object : AvailableObjects)
     {
         if (Object && Object->ActionType == Action && Object->CanInteract())
         {
-            float Distance = FVector::Dist(GetActorLocation(), Object->GetActorLocation());
-            if (Distance < ClosestDistance)
-            {
-                ClosestDistance = Distance;
-                ClosestObject = Object;
-            }
+            Result.Add(Object);
         }
     }
-
-    return ClosestObject;
+    
+    // Сортуємо за відстанню
+    Result.Sort([this](const AActor& A, const AActor& B)
+    {
+        float DistA = FVector::Dist(GetActorLocation(), A.GetActorLocation());
+        float DistB = FVector::Dist(GetActorLocation(), B.GetActorLocation());
+        return DistA < DistB;
+    });
+    
+    return Result;
 }
 
 void ANPCCharacter::MakeDecision()
 {
-    if (!NeedsComponent || !NeedsComponent->bIsAlive)
+    if (!NeedsComponent || !NeedsComponent->bIsAlive || !HighLevelQL)
     {
         return;
     }
     
-    if (CurrentState == ENPCState::MovingToObject || CurrentState == ENPCState::Interacting)
+    if (bExecutingMacroAction)
     {
-        UE_LOG(LogTemp, Log, TEXT("%s busy (State: %d), skipping decision"), 
-               *GetName(), (int32)CurrentState);
-        return;  
+        return;
     }
     
-    bool bAllNeedsHigh = true;
+    // Safety Net: екстрена логіка для критичних потреб
+    ENeedType CriticalNeed = ENeedType::MAX;
+    float LowestValue = 100.0f;
+    
     for (int32 i = 0; i < (int32)ENeedType::MAX; i++)
     {
-        if (NeedsComponent->GetNeedValue((ENeedType)i) < 80.0f)
+        ENeedType NeedType = (ENeedType)i;
+        float Value = NeedsComponent->GetNeedValue(NeedType);
+        
+        if (Value < 25.0f && Value < LowestValue)
         {
-            bAllNeedsHigh = false;
-            break;
+            LowestValue = Value;
+            CriticalNeed = NeedType;
         }
     }
-
-    TArray<EActionType> AvailableActions = GetAvailableActions();
-
-    if (bAllNeedsHigh)
+    
+    if (CriticalNeed != ENeedType::MAX)
     {
-        ChosenAction = EActionType::Idle;
-        CurrentState = ENPCState::Idle;
-        UE_LOG(LogTemp, Log, TEXT("%s: All needs high, idling"), *GetName());
+        UE_LOG(LogTemp, Error, TEXT("🚨 %s EMERGENCY: Need %d = %.1f"), 
+               *GetName(), (int32)CriticalNeed, LowestValue);
+        ExecuteMacroAction((EMacroAction)((int32)CriticalNeed));
         return;
     }
     
-    StateBeforeAction = QLearningComponent->CurrentState;
+    // High-Level Q-Learning вибирає дію
+    StateBeforeMacroAction = HighLevelQL->GetCurrentState();
+    CurrentMacroAction = HighLevelQL->ChooseMacroAction(StateBeforeMacroAction);
     
-    ChosenAction = QLearningComponent->ChooseAction(AvailableActions);
-    UE_LOG(LogTemp, Log, TEXT("%s chose action: %d"), *GetName(), (int32)ChosenAction);
+    UE_LOG(LogTemp, Log, TEXT("%s chose macro-action: %d"), 
+           *GetName(), (int32)CurrentMacroAction);
     
-    if (ChosenAction == EActionType::Idle)
-    {
-        CurrentState = ENPCState::Idle;
-        return;
-    }
-    
-    CurrentTarget = FindObjectForAction(ChosenAction);
-
-    if (CurrentTarget)
-    {
-        MoveToObject(CurrentTarget);
-    }
-    else
-    {
-        UE_LOG(LogTemp, Log, TEXT("%s: No object found for action %d"), 
-               *GetName(), (int32)ChosenAction);
-        CurrentState = ENPCState::Idle;
-    }
+    ExecuteMacroAction(CurrentMacroAction);
 }
 
-void ANPCCharacter::MoveToObject(AInteractableObject* Object)
+void ANPCCharacter::ExecuteMacroAction(EMacroAction MacroAction)
 {
-    if (!AIController || !Object)
+    bExecutingMacroAction = true;
+    MacroActionStartTime = GetWorld()->GetTimeSeconds();
+    
+    ENeedType TargetNeed = (ENeedType)((int32)MacroAction);
+    
+    EActionType ActionType = EActionType::Idle;
+    switch (TargetNeed)
     {
-        CurrentState = ENPCState::Idle;
-        return;
+        case ENeedType::Hunger:   ActionType = EActionType::UseRefrigerator; break;
+        case ENeedType::Bladder:  ActionType = EActionType::UseToilet; break;
+        case ENeedType::Energy:   ActionType = EActionType::UseBed; break;
+        case ENeedType::Social:   ActionType = EActionType::UseSofa; break;
+        case ENeedType::Hygiene:  ActionType = EActionType::UseShower; break;
+        case ENeedType::Fun:      ActionType = EActionType::UseTelevision; break;
     }
-
-    float Distance = FVector::Dist(GetActorLocation(), Object->GetActorLocation());
-    UE_LOG(LogTemp, Warning, TEXT("%s: Distance to target: %.2f"), *GetName(), Distance);
-
-    CurrentState = ENPCState::MovingToObject;
-
-    FAIMoveRequest MoveRequest;
-    MoveRequest.SetGoalActor(Object);
-    MoveRequest.SetAcceptanceRadius(150.0f);
-
-    FNavPathSharedPtr NavPath;
-    FPathFollowingRequestResult RequestResult = AIController->MoveTo(MoveRequest, &NavPath);
-
-    if (RequestResult.Code != EPathFollowingRequestResult::RequestSuccessful)
+    
+    TArray<AActor*> AvailableObjectsForAction = GetInteractableObjectsForAction(ActionType);
+    
+    if (AvailableObjectsForAction.Num() == 0)
     {
-        UE_LOG(LogTemp, Error, TEXT("%s: MoveTo request FAILED!"), *GetName());
-        CurrentState = ENPCState::Idle;
+        UE_LOG(LogTemp, Warning, TEXT("%s: No objects for action %d"), 
+               *GetName(), (int32)ActionType);
+        OnMacroActionCompleted(false);
         return;
     }
     
-    if (AIController->GetPathFollowingComponent())
+    CurrentTarget = Cast<AInteractableObject>(AvailableObjectsForAction[0]);
+    
+    float Distance = FVector::Dist(GetActorLocation(), CurrentTarget->GetActorLocation());
+    UE_LOG(LogTemp, Warning, TEXT("%s: Distance to target: %.2f"), *GetName(), Distance);
+    
+    CurrentTarget->OnInteractionComplete.AddDynamic(this, &ANPCCharacter::OnInteractionComplete);
+    
+    CurrentState = ENPCState::MovingToObject;
+    UE_LOG(LogTemp, Log, TEXT("%s moving to %s"), *GetName(), *CurrentTarget->GetName());
+    
+    if (AIController)
     {
-        AIController->GetPathFollowingComponent()->OnRequestFinished.Clear(); 
+        FAIMoveRequest MoveRequest;
+        MoveRequest.SetGoalActor(CurrentTarget);
+        MoveRequest.SetAcceptanceRadius(150.0f);
         
-        AIController->GetPathFollowingComponent()->OnRequestFinished.AddLambda(
-            [this](FAIRequestID RequestID, const FPathFollowingResult& Result)
-            {
-                OnMoveCompleted(RequestID, Result.Code);
-            }
-        );
+        FNavPathSharedPtr NavPath;
+        FPathFollowingRequestResult RequestResult = AIController->MoveTo(MoveRequest, &NavPath);
+        
+        if (RequestResult.Code != EPathFollowingRequestResult::RequestSuccessful)
+        {
+            UE_LOG(LogTemp, Error, TEXT("%s: MoveTo request FAILED!"), *GetName());
+            OnMacroActionCompleted(false);
+            return;
+        }
+        
+        if (AIController->GetPathFollowingComponent())
+        {
+            AIController->GetPathFollowingComponent()->OnRequestFinished.Clear();
+            
+            AIController->GetPathFollowingComponent()->OnRequestFinished.AddLambda(
+                [this](FAIRequestID RequestID, const FPathFollowingResult& Result)
+                {
+                    OnMoveCompleted(RequestID, Result.Code);
+                }
+            );
+        }
     }
-
-    UE_LOG(LogTemp, Log, TEXT("%s moving to %s"), *GetName(), *Object->GetName());
 }
 
 void ANPCCharacter::OnMoveCompleted(FAIRequestID RequestID, EPathFollowingResult::Type Result)
@@ -244,13 +247,12 @@ void ANPCCharacter::OnMoveCompleted(FAIRequestID RequestID, EPathFollowingResult
         else
         {
             UE_LOG(LogTemp, Warning, TEXT("%s too far from target"), *GetName());
-            CurrentState = ENPCState::Idle;
-            CurrentTarget = nullptr;
+            OnMacroActionCompleted(false);
         }
     }
     else
     {
-        CurrentState = ENPCState::Idle;
+        OnMacroActionCompleted(false);
     }
 }
 
@@ -258,21 +260,18 @@ void ANPCCharacter::StartInteractionWithObject()
 {
     if (!CurrentTarget)
     {
-        CurrentState = ENPCState::Idle;
+        OnMacroActionCompleted(false);
         return;
     }
     
     if (!CurrentTarget->CanInteract())
     {
         UE_LOG(LogTemp, Warning, TEXT("%s: Object became occupied"), *GetName());
-        CurrentState = ENPCState::Idle;
-        CurrentTarget = nullptr;
+        OnMacroActionCompleted(false);
         return;
     }
 
     CurrentState = ENPCState::Interacting;
-    
-    CurrentTarget->OnInteractionComplete.AddDynamic(this, &ANPCCharacter::OnInteractionComplete);
     
     CurrentTarget->StartInteraction(this);
 
@@ -282,11 +281,6 @@ void ANPCCharacter::StartInteractionWithObject()
 
 void ANPCCharacter::OnInteractionComplete(AActor* User)
 {
-    UE_LOG(LogTemp, Error, TEXT("OnInteractionComplete: User=%s, This=%s, Match=%d"),
-           User ? *User->GetName() : TEXT("NULL"), 
-           *GetName(), 
-           (User == this));
-    
     if (User != this)
     {
         return;
@@ -296,22 +290,13 @@ void ANPCCharacter::OnInteractionComplete(AActor* User)
 
     TotalActionsPerformed++;
     
-    UE_LOG(LogTemp, Error, TEXT("About to update state and calculate reward..."));
-    QLearningComponent->UpdateCurrentState();
+    float Reward = CalculateMacroActionReward(true);
     
-    float Reward = QLearningComponent->CalculateReward(
-        StateBeforeAction, 
-        QLearningComponent->CurrentState, 
-        !NeedsComponent->bIsAlive
-    );
+    FHighLevelState CurrentStateHL = HighLevelQL->GetCurrentState();
+    HighLevelQL->UpdateQValue(StateBeforeMacroAction, CurrentMacroAction, Reward, CurrentStateHL);
     
-    QLearningComponent->PreviousState = StateBeforeAction;
-    QLearningComponent->PreviousAction = ChosenAction;
-
-    UE_LOG(LogTemp, Error, TEXT("CALLING UpdateQValue with Reward=%.2f"), Reward);
-    QLearningComponent->UpdateQValue(Reward);
-    
-    UCSVLogger::LogAction(NPCID, Generation, ChosenAction, StateBeforeAction.GetStateKey(),
+    UCSVLogger::LogAction(NPCID, Generation, CurrentTarget->ActionType, 
+                         StateBeforeMacroAction.GetStateKey(),
                          Reward, Lifetime, NeedsComponent->Needs);
     
     CurrentState = ENPCState::Idle;
@@ -320,6 +305,59 @@ void ANPCCharacter::OnInteractionComplete(AActor* User)
         CurrentTarget->OnInteractionComplete.RemoveDynamic(this, &ANPCCharacter::OnInteractionComplete);
         CurrentTarget = nullptr;
     }
+    
+    OnMacroActionCompleted(true);
+}
+
+void ANPCCharacter::OnMacroActionCompleted(bool bSuccess)
+{
+    bExecutingMacroAction = false;
+    
+    if (!bSuccess)
+    {
+        CurrentState = ENPCState::Idle;
+        if (CurrentTarget)
+        {
+            CurrentTarget->OnInteractionComplete.RemoveDynamic(this, &ANPCCharacter::OnInteractionComplete);
+            CurrentTarget = nullptr;
+        }
+    }
+    
+    float Duration = GetWorld()->GetTimeSeconds() - MacroActionStartTime;
+    
+    UE_LOG(LogTemp, Log, TEXT("%s macro-action completed: Success=%d, Duration=%.1fs"), 
+           *GetName(), bSuccess, Duration);
+}
+
+float ANPCCharacter::CalculateMacroActionReward(bool bSuccess)
+{
+    if (!bSuccess)
+    {
+        return -50.0f;
+    }
+    
+    float Reward = 100.0f;
+    
+    ENeedType TargetNeed = (ENeedType)((int32)CurrentMacroAction);
+    float NeedValue = NeedsComponent->GetNeedValue(TargetNeed);
+    
+    if (NeedValue >= 80.0f)
+    {
+        Reward += 50.0f;
+    }
+    
+    for (int32 i = 0; i < (int32)ENeedType::MAX; i++)
+    {
+        ENeedType Need = (ENeedType)i;
+        float Value = NeedsComponent->GetNeedValue(Need);
+        
+        if (Value < 20.0f)
+        {
+            Reward -= 30.0f;
+        }
+    }
+    
+    return Reward;
 }
 
 void ANPCCharacter::OnNPCDied()
@@ -337,11 +375,12 @@ void ANPCCharacter::OnNPCDied()
     UE_LOG(LogTemp, Error, TEXT("%s DIED after %.2f seconds (Generation %d)"), 
            *GetName(), Lifetime, Generation);
     
-    float DeathPenalty = -1000.0f;
-    QLearningComponent->UpdateCurrentState();
-    QLearningComponent->PreviousState = StateBeforeAction;
-    QLearningComponent->PreviousAction = ChosenAction;
-    QLearningComponent->UpdateQValue(DeathPenalty);
+    if (bExecutingMacroAction)
+    {
+        float Reward = -1000.0f;
+        FHighLevelState DeadState = HighLevelQL->GetCurrentState();
+        HighLevelQL->UpdateQValue(StateBeforeMacroAction, CurrentMacroAction, Reward, DeadState);
+    }
     
     UCSVLogger::LogDeath(NPCID, Generation, Lifetime, NeedsComponent->Needs);
     
@@ -362,9 +401,27 @@ void ANPCCharacter::OnNPCDied()
 
     UGenerationLogger::LogGeneration(Stats);
     
-    QLearningComponent->SaveQTable("QTable.json");
+    HighLevelQL->SaveQTable("HighLevelQTable.json");
     
     GetWorld()->GetTimerManager().ClearTimer(DecisionTimerHandle);
     
     SetLifeSpan(2.0f);
+}
+
+// Старі функції які більше не використовуються (можна видалити)
+TArray<EActionType> ANPCCharacter::GetAvailableActions()
+{
+    TArray<EActionType> Actions;
+    Actions.Add(EActionType::Idle);
+    return Actions;
+}
+
+AInteractableObject* ANPCCharacter::FindObjectForAction(EActionType Action)
+{
+    return nullptr;
+}
+
+void ANPCCharacter::MoveToObject(AInteractableObject* Object)
+{
+    // Не використовується
 }

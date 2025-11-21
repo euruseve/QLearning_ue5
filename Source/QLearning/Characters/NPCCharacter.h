@@ -3,7 +3,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "../Components/NeedsComponent.h"
-#include "../Components/QLearningComponent.h"
+//#include "../Components/QLearningComponent.h"
+#include "../Components/HighLevelQLearning.h"
 #include "../Actors/InteractableObject.h"
 #include "AIController.h"
 #include "Navigation/PathFollowingComponent.h"
@@ -43,8 +44,25 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UNeedsComponent* NeedsComponent;
 
+    /*UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    UQLearningComponent* QLearningComponent;*/
+
+    // НОВИЙ High-Level Q-Learning
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UQLearningComponent* QLearningComponent;
+    UHighLevelQLearning* HighLevelQL;
+    
+    UPROPERTY()
+    FHighLevelState StateBeforeMacroAction;
+    
+    UPROPERTY()
+    EMacroAction CurrentMacroAction;
+    
+    UPROPERTY()
+    bool bExecutingMacroAction;
+    
+    UPROPERTY()
+    float MacroActionStartTime;
+
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NPC")
     int32 NPCID = 0;
@@ -87,6 +105,11 @@ protected:
     UFUNCTION()
     void OnMoveCompleted(FAIRequestID RequestID, EPathFollowingResult::Type Result);
 
+    void ExecuteMacroAction(EMacroAction MacroAction);
+    void OnMacroActionCompleted(bool bSuccess);
+    float CalculateMacroActionReward(bool bSuccess);
+    TArray<AActor*> GetInteractableObjectsForAction(EActionType Action);
+    
 private:
     FTimerHandle DecisionTimerHandle;
     AAIController* AIController;

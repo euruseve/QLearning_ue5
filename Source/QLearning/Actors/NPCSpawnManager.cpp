@@ -151,13 +151,14 @@ void ANPCSpawnManager::SpawnNPC(int32 NPCID)
         
         if (NewNPC->NeedsComponent)
         {
+            NewNPC->NeedsComponent->CurrentGeneration = NewNPC->Generation;
             CurrentDyingNPC = NewNPC;
             NewNPC->NeedsComponent->OnNPCDied.AddDynamic(this, &ANPCSpawnManager::HandleNPCDeath);
         }
 
-        if (bShareQTable && NewNPC->QLearningComponent)
+        if (bShareQTable && NewNPC->HighLevelQL)
         {
-            NewNPC->QLearningComponent->LoadQTable("QTable.json"); 
+            NewNPC->HighLevelQL->LoadQTable("HighLevelQTable.json");
         }
 
         ActiveNPCs.Add(NewNPC);

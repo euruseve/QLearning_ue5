@@ -57,6 +57,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Needs")
     ENeedType GetMostCriticalNeed() const;
 
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curriculum")
+    int32 CurrentGeneration = 0;
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Curriculum")
+    float BaseDegradationRate = 1.0f;
+    
+    float CalculateDifficultyMultiplier(int32 Generation) const;
+    float CalculateStartValue(int32 Generation) const;
+
+    
 private:
     void DegradeNeeds(float DeltaTime);
     void CheckForDeath();
